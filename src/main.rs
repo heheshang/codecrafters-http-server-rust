@@ -13,7 +13,7 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(_stream) => {
-                println!("new connection: {}", _stream.peer_addr().unwrap());
+                // println!("new connection: {}", _stream.peer_addr().unwrap());
                 thread::spawn(move || {
                     handle_connection(_stream);
                 });
@@ -30,13 +30,13 @@ fn main() {
 }
 
 fn handle_connection(mut stream: TcpStream) {
-    let mut buffer = Vec::new();
+    let mut buffer = [0; 1024];
 
-    stream.read_to_end(&mut buffer).unwrap();
+    stream.read(&mut buffer).unwrap();
 
     let req_string = String::from_utf8_lossy(&buffer[..]);
     let req_lines: Vec<&str> = req_string.split('\n').collect();
-    println!("req_lines: {:?}", req_lines);
+    eprintln!("req_lines: {:?}", req_lines);
     let first_line: Vec<&str> = match req_lines.first() {
         Some(line) => line.split_whitespace().collect(),
         None => vec![""],
@@ -44,7 +44,7 @@ fn handle_connection(mut stream: TcpStream) {
 
     let req_path = first_line[1];
     let path_parts = req_path.split('/').collect::<Vec<&str>>();
-    println!("path_parts: {:?}", path_parts);
+    eprintln!("path_parts: {:?}", path_parts);
     let mut res = String::new();
 
     match path_parts[1] {
