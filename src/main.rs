@@ -51,7 +51,7 @@ fn handle_connection(mut stream: TcpStream) {
     let first_line = lines.first().unwrap();
 
     let path = get_path(first_line);
-
+    eprintln!("path: {}", path);
     match path.as_str() {
         "/" => {
             let response = "HTTP/1.1 200 OK\r\n\r\n";
