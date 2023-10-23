@@ -11,10 +11,22 @@ fn main() {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
 
     for stream in listener.incoming() {
+        // match stream {
+        //     Ok(stream) => {
+        //         println!("new connection: {}", stream.peer_addr().unwrap());
+        //         handle_connection(stream);
+        //     }
+        //     Err(e) => {
+        //         println!("error: {}", e);
+        //     }
+        // }
+        // multi-threaded
         match stream {
             Ok(stream) => {
-                println!("new connection: {}", stream.peer_addr().unwrap());
-                handle_connection(stream);
+                std::thread::spawn(move || {
+                    println!("new connection: {}", stream.peer_addr().unwrap());
+                    handle_connection(stream);
+                });
             }
             Err(e) => {
                 println!("error: {}", e);
