@@ -1,8 +1,8 @@
+use std::thread;
 use std::{
     io::{BufRead, Write},
     net::{TcpListener, TcpStream},
 };
-
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
@@ -21,16 +21,7 @@ fn main() {
         //     }
         // }
         // multi-threaded
-        match stream {
-            Ok(stream) => {
-                std::thread::spawn( || {
-                    handle_connection(stream);
-                });
-            }
-            Err(e) => {
-                println!("error: {}", e);
-            }
-        }
+        thread::spawn(|| handle_connection(stream.unwrap()));
     }
 }
 fn handle_connection(mut stream: TcpStream) {
