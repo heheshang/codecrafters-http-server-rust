@@ -36,6 +36,7 @@ fn handle_connection(mut stream: TcpStream) {
 
     let req_string = String::from_utf8_lossy(&buffer[..]);
     let req_lines: Vec<&str> = req_string.split('\n').collect();
+    println!("req_lines: {:?}", req_lines);
     let first_line: Vec<&str> = match req_lines.first() {
         Some(line) => line.split_whitespace().collect(),
         None => vec![""],
