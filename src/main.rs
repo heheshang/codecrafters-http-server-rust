@@ -38,7 +38,8 @@ fn handle_connection(mut stream: TcpStream) {
         lines.push(buffer);
     }
     let first_line = lines.first().unwrap();
-    let ua = lines.get(2).unwrap();
+    let binding = "".to_string();
+    let ua = lines.get(2).unwrap_or(&binding);
     let ua = parse_ua_line(ua);
     let (_method, uri, _version) = parse_request_line(first_line);
     match route(uri, ua) {
