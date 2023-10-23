@@ -18,7 +18,7 @@ fn main() {
                 thread::spawn(move || {
                     handle_connection(_stream);
                 });
-
+                ()
                 // handle_connection(_stream);
             }
             Err(e) => {
@@ -31,7 +31,12 @@ fn main() {
 }
 fn handle_connection(mut stream: TcpStream) {
     let mut buffer = [0; 1024];
-    stream.read_exact(&mut buffer).unwrap();
+    match stream.read_exact(&mut buffer) {
+        Ok(_) => {}
+        Err(e) => {
+            println!("error: {}", e);
+        }
+    }
 
     let req_string = String::from_utf8_lossy(&buffer[..]);
     let req_lines: Vec<&str> = req_string.split('\n').collect();
