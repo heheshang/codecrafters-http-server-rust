@@ -104,5 +104,5 @@ fn handle_connection(mut stream: TcpStream) {
         "" => res.push_str("HTTP/1.1 200 OK\r\n\r\n"),
         _ => res.push_str("HTTP/1.1 404 Not Found\r\n\r\n"),
     }
-    stream.write_all(res.as_bytes()).unwrap();
+    let _ = stream.write_all(res.as_bytes());
 }
