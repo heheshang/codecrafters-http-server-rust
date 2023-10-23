@@ -87,7 +87,7 @@ fn handle_connection(mut stream: TcpStream) {
                     println!("file_path_idx: {}", file_path_idx);
                     let param = req_path.split_at(file_path_idx).1;
                     let file_name = param.split_at(7).1;
-                    let file_path = format!("{}/{}", dir, file_name);
+                    let file_path = format!("{}{}", dir, file_name);
                     println!("file_path: {}", file_path);
                     match fs::metadata(&file_path) {
                         Ok(_) => {
