@@ -64,8 +64,9 @@ fn handle_connection(mut stream: TcpStream) {
 
             let user_agent = req_lines
                 .iter()
-                .find(|line| line.starts_with("User-Agent: "))
+                .find(|line| line.starts_with("User-Agent:"))
                 .unwrap_or(&"");
+            println!("user_agent: {}", user_agent);
             let user_content = user_agent.split_at(12).1;
             res.push_str(&format!("Content-Length: {}\r\n\r\n", user_content.len()));
             res.push_str(user_content);
