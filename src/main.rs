@@ -57,6 +57,17 @@ fn handle_connection(mut stream: TcpStream) {
             let response = "HTTP/1.1 200 OK\r\n\r\n";
             stream.write_all(response.as_bytes()).unwrap();
         }
+        "/echo" => {
+            let length = path.rsplit_once('/').unwrap().0.len();
+            let content = path.rsplit_once('/').unwrap().0;
+            let response = "HTTP/1.1 200 OK\r\n";
+            stream.write_all(response.as_bytes()).unwrap();
+            let content_type = "Content-Type: text/plain\r\n";
+            let content_length = format!("Content-Length: {}\r\n\r\n", length);
+            stream.write_all(content_type.as_bytes()).unwrap();
+            stream.write_all(content_length.as_bytes()).unwrap();
+            stream.write_all(content.as_bytes()).unwrap();
+        }
         _ => {
             let response = "HTTP/1.1 404 Not Found\r\n\r\n";
             stream.write_all(response.as_bytes()).unwrap();
