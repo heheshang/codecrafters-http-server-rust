@@ -1,7 +1,6 @@
 use std::env;
 use std::fs;
-use std::io::Read;
-use std::io::Write;
+use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 fn main() {
@@ -29,14 +28,11 @@ fn main() {
         // thread::spawn(|| handle_connection(stream.unwrap()));
     }
 }
+
 fn handle_connection(mut stream: TcpStream) {
-    let mut buffer = [0; 1024];
-    match stream.read_exact(&mut buffer) {
-        Ok(_) => {}
-        Err(e) => {
-            println!("error: {}", e);
-        }
-    }
+    let mut buffer = Vec::new();
+
+    stream.read_to_end(&mut buffer).unwrap();
 
     let req_string = String::from_utf8_lossy(&buffer[..]);
     let req_lines: Vec<&str> = req_string.split('\n').collect();
