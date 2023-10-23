@@ -77,6 +77,7 @@ fn handle_connection(mut stream: TcpStream) {
         "files" => {
             let args = env::args().collect::<Vec<String>>();
             let dir_arg_idx = args.iter().position(|arg| arg == "--directory");
+            println!("dir_arg_idx: {:?}", dir_arg_idx);
             match dir_arg_idx {
                 Some(idx) => {
                     let dir = &args[idx + 1];
