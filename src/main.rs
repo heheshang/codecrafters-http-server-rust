@@ -1,6 +1,8 @@
+use std::env;
+use std::fs;
+use std::io::Read;
 use std::thread;
 use std::{
-    io::{BufRead, Write},
     net::{TcpListener, TcpStream},
 };
 fn main() {
@@ -25,74 +27,76 @@ fn main() {
     }
 }
 fn handle_connection(mut stream: TcpStream) {
-    let mut reader = std::io::BufReader::new(&stream);
-    let mut lines: Vec<String> = Vec::new();
+    let mut buffer = [0; 1024];
+    stream.read_exact(&mut buffer).unwrap();
 
-    loop {
-        let mut buffer = String::new();
-        reader.read_line(&mut buffer).unwrap();
-        let buffer = buffer.trim().to_owned();
-        if buffer.is_empty() {
-            break;
-        }
-        lines.push(buffer);
-    }
-    let first_line = lines.first().unwrap();
-    let binding = "".to_string();
-    let ua = lines.get(2).unwrap_or(&binding);
-    let ua = parse_ua_line(ua);
-    let (_method, uri, _version) = parse_request_line(first_line);
-    match route(uri, ua) {
-        Some(c) => {
-            let response = generate_response(&c);
-            stream.write_all(response.as_bytes()).unwrap();
-        }
-        None => {
-            let response = "HTTP/1.1 404 Not Found\r\n\r\n";
-            stream.write_all(response.as_bytes()).unwrap();
-        }
-    }
-}
-fn parse_ua_line(ua: &str) -> String {
-    if ua.len() < 12 {
-        return String::from("");
-    }
-    String::from(&ua[12..])
-}
-fn parse_request_line(first_line: &str) -> (String, String, String) {
-    let mut method = String::new();
-    let mut uri = String::new();
-    let mut version = String::new();
-    for (i, val) in first_line.split_whitespace().enumerate() {
-        match i {
-            0 => method = val.to_string(),
-            1 => uri = val.to_string(),
-            2 => version = val.to_string(),
-            _ => {}
-        }
-    }
-    (method, uri, version)
-}
+    let req_string = String::from_utf8_lossy(&buffer[..]);
+    let req_lines: Vec<&str> = req_string.split('\n').collect();
+    let first_line: Vec<&str> = match req_lines.first() {
+        Some(line) => line.split_whitespace().collect(),
+        None => vec![""],
+    };
 
-fn route(uri: String, ua: String) -> Option<String> {
-    let sections = uri.split('/').collect::<Vec<&str>>();
-    println!("{:?}", sections);
-    if sections.len() < 2 {
-        return None;
-    }
-    let v = sections.get(1).unwrap();
-    match *v {
-        "" => Some(String::from("")),
-        "echo" => Some(sections[2..].join("/")),
-        "user-agent" if sections.len() == 2 => Some(ua),
-        _ => None,
-    }
-}
+    let req_path = first_line[1];
+    let path_parts = req_path.split('/').collect::<Vec<&str>>();
+    let mut res = String::new();
 
-fn generate_response(c: &str) -> String {
-    format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
-        c.len(),
-        c
-    )
+    match path_parts[1] {
+        "echo" => {
+            res.push_str("HTTP/1.1 200 OK\r\n");
+            res.push_str("Content-Type: text/plain\r\n");
+            let echo_idx = req_path.find("/echo").unwrap();
+            let echo_str = req_path.split_at(echo_idx).1;
+            // Remove "/echo/"
+            let rest = echo_str.split_at(6).1;
+            res.push_str(&format!("Content-Length: {}\r\n\r\n", rest.len()));
+            res.push_str(rest);
+        }
+        "user-agent" => {
+            res.push_str("HTTP/1.1 200 OK\r\n");
+            res.push_str("Content-Type: text/plain\r\n");
+
+            let user_agent = req_lines
+                .iter()
+                .find(|line| line.starts_with("User-Agent:"))
+                .unwrap_or(&"");
+            let user_content = user_agent.split_at(12).1;
+            res.push_str(&format!("Content-Length: {}\r\n\r\n", user_content.len()));
+            res.push_str(user_content);
+        }
+        "files" => {
+            let args = env::args().collect::<Vec<String>>();
+            let dir_arg_idx = args.iter().position(|arg| arg == "--directory");
+            match dir_arg_idx {
+                Some(idx) => {
+                    let dir = &args[idx + 1];
+                    let file_path_idx = req_path.find("/files").unwrap();
+                    let param = req_path.split_at(file_path_idx).1;
+                    let file_name = param.split_at(7).1;
+                    let file_path = format!("{}/{}", dir, file_name);
+
+                    match fs::metadata(&file_path) {
+                        Ok(_) => {
+                            res.push_str("HTTP/1.1 200 OK\r\n");
+                            res.push_str("Content-Type: text/plain\r\n");
+
+                            let mut len = 0;
+                            let mut contents = String::new();
+
+                            for line in fs::read_to_string(file_path).unwrap().lines() {
+                                len += line.len();
+                                contents.push_str(format!("{}\r\n", line).as_str());
+                            }
+                            res.push_str(&format!("Content-Length: {}\r\n\r\n", len));
+                            res.push_str(contents.as_str());
+                        }
+                        Err(_) => res.push_str(stringify!("HTTP/1.1 404 Not Found\r\n\r\n")),
+                    }
+                }
+                None => res.push_str(stringify!("HTTP/1.1 404 Not Found\r\n\r\n")),
+            };
+        }
+        "" => res.push_str("HTTP/1.1 200 OK\r\n\r\n"),
+        _ => res.push_str("HTTP/1.1 404 Not Found\r\n\r\n"),
+    }
 }
