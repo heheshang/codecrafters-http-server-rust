@@ -23,8 +23,7 @@ fn main() {
         // multi-threaded
         match stream {
             Ok(stream) => {
-                std::thread::spawn(move || {
-                    println!("new connection: {}", stream.peer_addr().unwrap());
+                std::thread::spawn( || {
                     handle_connection(stream);
                 });
             }
