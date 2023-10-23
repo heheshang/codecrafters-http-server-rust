@@ -54,6 +54,9 @@ fn handle_connection(mut stream: TcpStream) {
     }
 }
 fn parse_ua_line(ua: &str) -> String {
+    if ua.len() < 12 {
+        return String::from("");
+    }
     String::from(&ua[12..])
 }
 fn parse_request_line(first_line: &str) -> (String, String, String) {
