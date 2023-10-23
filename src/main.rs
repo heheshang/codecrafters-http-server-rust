@@ -43,6 +43,7 @@ fn handle_connection(mut stream: TcpStream) {
 
     let req_path = first_line[1];
     let path_parts = req_path.split('/').collect::<Vec<&str>>();
+    println!("path_parts: {:?}", path_parts);
     let mut res = String::new();
 
     match path_parts[1] {
