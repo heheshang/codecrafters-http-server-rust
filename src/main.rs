@@ -88,7 +88,7 @@ fn handle_connection(mut stream: TcpStream) {
                     match fs::metadata(&file_path) {
                         Ok(_) => {
                             res.push_str("HTTP/1.1 200 OK\r\n");
-                            res.push_str("Content-Type: text/plain\r\n");
+                            res.push_str("Content-Type: application/octet-stream\r\n");
 
                             let mut len = 0;
                             let mut contents = String::new();
