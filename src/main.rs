@@ -68,7 +68,10 @@ fn handle_connection(mut stream: TcpStream) {
                 .unwrap_or(&"");
             println!("user_agent: {}", user_agent);
             let user_content = user_agent.split_at(12).1;
-            res.push_str(&format!("Content-Length: {}\r\n\r\n", user_content.len()));
+            res.push_str(&format!(
+                "Content-Length: {}\r\n\r\n",
+                user_content.len() - 1
+            ));
             res.push_str(user_content);
         }
         "files" => {
