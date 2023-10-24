@@ -42,50 +42,55 @@ impl From<&str> for HttpMethod {
         }
     }
 }
+#[derive(Debug)]
 struct HttpRequest<'a> {
     method: HttpMethod,
-    path: String,
-    _version: String,
-    headers: HashMap<String, String>,
+    path: &'a str,
+    _version: &'a str,
+    headers: HashMap<&'a str, &'a str>,
     body: Option<&'a [u8]>,
 }
 impl HttpRequest<'_> {
     fn form_req_str(buffer: &str) -> Result<HttpRequest> {
+        println!("buffer: {}", buffer);
         let mut lines = buffer.split("\r\n");
 
-        let (method, path, version) = lines
-            .clone()
+        let (method, path, version) = &lines
             .next()
             .ok_or(anyhow!("Invalid frame"))?
             .split(' ')
             .collect_tuple()
             .ok_or(anyhow!("Invalid frame"))?;
+        println!("method: {}", method);
+        println!("path: {}", path);
+        println!("version: {}", version);
         let headers: HashMap<_, _> = lines
-            .clone()
-            .filter_map(|l| {
+            .by_ref()
+            .map_while(|l| {
                 if let Some((k, v)) = l.split_once(": ") {
-                    Some((k.trim().to_string(), v.trim().to_string()))
+                    Some((k.trim(), v.trim()))
                 } else {
                     None
                 }
             })
             .collect();
-
+        println!("headers: {:?}", headers);
         let body = match lines.next() {
-            Some(body_data) => {
+            Some(body_data) if !body_data.is_empty() => {
                 let data_len = headers
                     .get("Content-Length")
                     .ok_or(anyhow!("No content length"))?
                     .parse()?;
                 Some(&body_data.as_bytes()[0..data_len])
             }
-            None => None,
+            _ => None,
         };
 
+        println!("body: {:?}", body);
         Ok(HttpRequest {
-            method: HttpMethod::from(method),
-            path: path.to_string(),
-            _version: version.to_string(),
+            method: HttpMethod::from(*method),
+            path,
+            _version: version,
             headers,
             body,
         })
@@ -119,11 +124,16 @@ fn main() -> Result<()> {
 }
 
 fn handle_connection(mut stream: TcpStream, config: Arc<Config>) -> Result<()> {
-    let mut buffer = [0; 1024];
-    stream.read(&mut buffer)?;
-    let req = std::str::from_utf8(&buffer)?;
-    let frame = HttpRequest::form_req_str(req)?;
-    match frame.path.as_str() {
+    println!("Incoming connection from {}", stream.peer_addr()?);
+    let mut buffer = [0; 512];
+
+    let size = stream.read(&mut buffer)?;
+    println!("size: {}", size);
+    let request = std::str::from_utf8(&buffer[0..size])?;
+    println!("req: {}", request);
+    let frame = HttpRequest::form_req_str(request)?;
+    println!("frame: {:?}", frame);
+    match frame.path {
         "/" => index_route(&stream),
         _ if frame.path.starts_with("/echo") => echo_route(&stream, &frame),
         _ if frame.path.starts_with("/user-agent") => uesr_angent(&stream, &frame),
