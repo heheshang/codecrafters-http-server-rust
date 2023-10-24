@@ -85,7 +85,7 @@ impl HttpRequest<'_> {
         Ok(HttpRequest {
             method: HttpMethod::from(method),
             path: path.to_string(),
-            version: version.to_string(),
+            _version: version.to_string(),
             headers,
             body,
         })
