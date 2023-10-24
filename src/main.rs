@@ -52,14 +52,16 @@ struct HttpRequest<'a> {
 impl HttpRequest<'_> {
     fn form_req_str(buffer: &str) -> Result<HttpRequest> {
         let mut lines = buffer.split("\r\n");
-        let mut content = Vec::new();
+
         let (method, path, version) = lines
+            .clone()
             .next()
             .ok_or(anyhow!("Invalid frame"))?
             .split(' ')
             .collect_tuple()
             .ok_or(anyhow!("Invalid frame"))?;
         let headers: HashMap<_, _> = lines
+            .clone()
             .filter_map(|l| {
                 if let Some((k, v)) = l.split_once(": ") {
                     Some((k.trim().to_string(), v.trim().to_string()))
