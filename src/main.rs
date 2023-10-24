@@ -45,7 +45,7 @@ impl From<&str> for HttpMethod {
 struct HttpRequest<'a> {
     method: HttpMethod,
     path: String,
-    version: String,
+    _version: String,
     headers: HashMap<String, String>,
     body: Option<&'a [u8]>,
 }
