@@ -151,13 +151,10 @@ fn files_upload(stream: &TcpStream, frame: &HttpRequest, dir: &Option<String>) -
             return not_found_route(stream);
         }
     };
-    match file.write_all(&frame.body.ok_or(anyhow!("No body"))?) {
-        Ok(_) => send_created(stream),
-        Err(e) => {
-            eprintln!("Failed to write to file: {}", e);
-            not_found_route(stream)
-        }
-    }
+    let body = frame.body.ok_or(anyhow!("No body"))?;
+    let _ = file.write_all(body);
+    send_created(stream)?;
+    Ok(1)
 }
 
 fn send_created(mut stream: &TcpStream) -> Result<usize> {
