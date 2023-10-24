@@ -1,117 +1,177 @@
+use anyhow::anyhow;
+use anyhow::Context;
+use anyhow::Result;
+use itertools::Itertools;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
+
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::thread;
-fn main() {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    println!("Logs from your program will appear here!");
 
-    // Uncomment this block to pass the first stage
-    let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
+enum HttpMethod {
+    GET,
+    POST,
+    PUT,
+    DELETE,
+    HEAD,
+    OPTIONS,
+    CONNECT,
+    TRACE,
+    PATCH,
+}
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(_stream) => {
-                // println!("new connection: {}", _stream.peer_addr().unwrap());
-                thread::spawn(move || {
-                    handle_connection(_stream);
-                });
-                ()
-                // handle_connection(_stream);
-            }
-            Err(e) => {
-                println!("error: {}", e);
-            }
+impl From<&str> for HttpMethod {
+    fn from(value: &str) -> Self {
+        match value {
+            "GET" => HttpMethod::GET,
+            "POST" => HttpMethod::POST,
+            "PUT" => HttpMethod::PUT,
+            "DELETE" => HttpMethod::DELETE,
+            "HEAD" => HttpMethod::HEAD,
+            "OPTIONS" => HttpMethod::OPTIONS,
+            "CONNECT" => HttpMethod::CONNECT,
+            "TRACE" => HttpMethod::TRACE,
+            "PATCH" => HttpMethod::PATCH,
+            _ => HttpMethod::GET,
         }
-        // multi-threaded
-        // thread::spawn(|| handle_connection(stream.unwrap()));
+    }
+}
+struct HttpRequest {
+    method: HttpMethod,
+    path: String,
+    version: String,
+    headers: HashMap<String, String>,
+}
+impl HttpRequest {
+    fn form_req_str(buffer: &str) -> Result<HttpRequest> {
+        let mut lines = buffer.split("\r\n");
+        let (method, path, version) = lines
+            .next()
+            .ok_or(anyhow!("Invalid frame"))?
+            .split(' ')
+            .collect_tuple()
+            .ok_or(anyhow!("Invalid frame"))?;
+        let headers: HashMap<_, _> = lines
+            .filter_map(|l| {
+                if let Some((k, v)) = l.split_once(": ") {
+                    Some((k.trim().to_string(), v.trim().to_string()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(HttpRequest {
+            method: HttpMethod::from(method),
+            path: path.to_string(),
+            version: version.to_string(),
+            headers,
+        })
     }
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    let mut buffer = [0; 1024];
+struct Config {
+    dir: Option<String>,
+}
 
-    stream.read(&mut buffer).unwrap();
-
-    let req_string = String::from_utf8_lossy(&buffer[..]);
-    let req_lines: Vec<&str> = req_string.split('\n').collect();
-    eprintln!("req_lines: {:?}", req_lines);
-    let first_line: Vec<&str> = match req_lines.first() {
-        Some(line) => line.split_whitespace().collect(),
-        None => vec![""],
+fn main() -> Result<()> {
+    let linster = TcpListener::bind("127.0.0.1:4221")?;
+    let args = env::args().collect::<Vec<String>>();
+    let dir = if args.len() > 2 && args[1] == "--directory" {
+        Some(args[2].clone())
+    } else {
+        None
     };
-
-    let req_path = first_line[1];
-    let path_parts = req_path.split('/').collect::<Vec<&str>>();
-    eprintln!("path_parts: {:?}", path_parts);
-    let mut res = String::new();
-
-    match path_parts[1] {
-        "echo" => {
-            res.push_str("HTTP/1.1 200 OK\r\n");
-            res.push_str("Content-Type: text/plain\r\n");
-            let echo_idx = req_path.find("/echo").unwrap();
-            let echo_str = req_path.split_at(echo_idx).1;
-            // Remove "/echo/"
-            let rest = echo_str.split_at(6).1;
-            res.push_str(&format!("Content-Length: {}\r\n\r\n", rest.len()));
-            res.push_str(rest);
+    println!("dir: {:?}", &dir);
+    let config = Arc::new(Config { dir });
+    for stream in linster.incoming() {
+        match stream {
+            Ok(stream) => {
+                let c_config = config.clone();
+                thread::spawn(move || handle_connection(stream, c_config));
+            }
+            Err(e) => eprintln!("Error: {}", e),
         }
-        "user-agent" => {
-            res.push_str("HTTP/1.1 200 OK\r\n");
-            res.push_str("Content-Type: text/plain\r\n");
-
-            let user_agent = req_lines
-                .iter()
-                .find(|line| line.starts_with("User-Agent:"))
-                .unwrap_or(&"");
-            println!("user_agent: {}", user_agent);
-            let user_content = user_agent.split_at(12).1;
-            res.push_str(&format!(
-                "Content-Length: {}\r\n\r\n",
-                user_content.len() - 1
-            ));
-            res.push_str(user_content);
-        }
-        "files" => {
-            let args = env::args().collect::<Vec<String>>();
-            println!("args: {:?}", args);
-            let dir_arg_idx = args.iter().position(|arg| arg == "--directory");
-            println!("dir_arg_idx: {:?}", dir_arg_idx);
-            match dir_arg_idx {
-                Some(idx) => {
-                    let dir = &args[idx + 1];
-                    println!("dir: {}", dir);
-                    let file_path_idx = req_path.find("/files").unwrap();
-                    println!("file_path_idx: {}", file_path_idx);
-                    let param = req_path.split_at(file_path_idx).1;
-                    let file_name = param.split_at(7).1;
-                    let file_path = format!("{}{}", dir, file_name);
-                    println!("file_path: {}", file_path);
-                    match fs::metadata(&file_path) {
-                        Ok(_) => {
-                            res.push_str("HTTP/1.1 200 OK\r\n");
-                            res.push_str("Content-Type: application/octet-stream\r\n");
-
-                            let mut len = 0;
-                            let mut contents = String::new();
-
-                            for line in fs::read_to_string(file_path).unwrap().lines() {
-                                len += line.len();
-                                contents.push_str(format!("{}\r\n", line).as_str());
-                            }
-                            res.push_str(&format!("Content-Length: {}\r\n\r\n", len));
-                            res.push_str(contents.as_str());
-                        }
-                        Err(_) => res.push_str(stringify!("HTTP/1.1 404 Not Found\r\n\r\n")),
-                    }
-                }
-                None => res.push_str(stringify!("HTTP/1.1 404 Not Found\r\n\r\n")),
-            };
-        }
-        "" => res.push_str("HTTP/1.1 200 OK\r\n\r\n"),
-        _ => res.push_str("HTTP/1.1 404 Not Found\r\n\r\n"),
     }
-    let _ = stream.write_all(res.as_bytes());
+    Ok(())
+}
+
+fn handle_connection(mut stream: TcpStream, config: Arc<Config>) -> Result<()> {
+    let mut buffer = [0; 1024];
+    stream.read(&mut buffer)?;
+    let req = std::str::from_utf8(&buffer)?;
+    let frame = HttpRequest::form_req_str(req)?;
+    match frame.path.as_str() {
+        "/" => index_route(&stream),
+        _ if frame.path.starts_with("/echo") => echo_route(&stream, &frame),
+        _ if frame.path.starts_with("/user-agent") => uesr_angent(&stream, &frame),
+        _ if frame.path.starts_with("/files/") => files_route(&stream, &frame, &config.dir),
+
+        _ => not_found_route(&stream),
+    }?;
+
+    Ok(())
+}
+
+fn uesr_angent(
+    stream: &TcpStream,
+    frame: &HttpRequest,
+) -> std::result::Result<usize, anyhow::Error> {
+    let user_agent = frame
+        .headers
+        .get("User-Agent")
+        .ok_or(anyhow!("User-Agent not found"))?;
+
+    send_text_plain(stream, user_agent)
+}
+
+fn files_route(stream: &TcpStream, frame: &HttpRequest, dir: &Option<String>) -> Result<usize> {
+    let dir = dir.as_ref().ok_or(anyhow!("No directory provided"))?;
+    let mut path = PathBuf::from(dir);
+    path.push(&frame.path[7..]);
+    if let Ok(data) = fs::read(path).context("Failed to read file") {
+        send_binary(stream, &data)
+    } else {
+        not_found_route(stream)
+    }
+}
+
+fn send_binary(mut stream: &TcpStream, data: &[u8]) -> std::result::Result<usize, anyhow::Error> {
+    let mut resp = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n".to_string();
+    resp.push_str(&format!("Content-Length: {}\r\n\r\n", data.len()));
+    let mut res_bytes = Vec::from(resp.as_bytes());
+    res_bytes.extend(data);
+    stream
+        .write(&res_bytes)
+        .context("Failed to write to stream")
+}
+
+fn echo_route(stream: &TcpStream, frame: &HttpRequest) -> Result<usize> {
+    send_text_plain(stream, &frame.path[6..])
+}
+
+fn send_text_plain(mut stream: &TcpStream, text: &str) -> Result<usize> {
+    let mut data = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n".to_string();
+    data.push_str(&format!("Content-Length: {}\r\n\r\n", text.len()));
+    data.push_str(text);
+    let bytes = stream
+        .write(data.as_bytes())
+        .context("Failed to write to stream")?;
+    Ok(bytes)
+}
+
+fn not_found_route(mut stream: &TcpStream) -> Result<usize> {
+    stream
+        .write(b"HTTP/1.1 404 NOT FOUND\r\n\r\n")
+        .context("Failed to write to stream")
+}
+
+fn index_route(mut stream: &TcpStream) -> Result<usize> {
+    stream
+        .write(b"HTTP/1.1 200 OK\r\n\r\n")
+        .context("Failed to write to stream")
 }
