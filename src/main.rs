@@ -5,6 +5,7 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::fs::File;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 
@@ -12,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 
+#[derive(Debug, PartialEq)]
 enum HttpMethod {
     GET,
     POST,
@@ -40,15 +42,17 @@ impl From<&str> for HttpMethod {
         }
     }
 }
-struct HttpRequest {
+struct HttpRequest<'a> {
     method: HttpMethod,
     path: String,
     version: String,
     headers: HashMap<String, String>,
+    body: Option<&'a [u8]>,
 }
-impl HttpRequest {
+impl HttpRequest<'_> {
     fn form_req_str(buffer: &str) -> Result<HttpRequest> {
         let mut lines = buffer.split("\r\n");
+        let mut content = Vec::new();
         let (method, path, version) = lines
             .next()
             .ok_or(anyhow!("Invalid frame"))?
@@ -65,11 +69,23 @@ impl HttpRequest {
             })
             .collect();
 
+        let body = match lines.next() {
+            Some(body_data) => {
+                let data_len = headers
+                    .get("Content-Length")
+                    .ok_or(anyhow!("No content length"))?
+                    .parse()?;
+                Some(&body_data.as_bytes()[0..data_len])
+            }
+            None => None,
+        };
+
         Ok(HttpRequest {
             method: HttpMethod::from(method),
             path: path.to_string(),
             version: version.to_string(),
             headers,
+            body,
         })
     }
 }
@@ -109,12 +125,43 @@ fn handle_connection(mut stream: TcpStream, config: Arc<Config>) -> Result<()> {
         "/" => index_route(&stream),
         _ if frame.path.starts_with("/echo") => echo_route(&stream, &frame),
         _ if frame.path.starts_with("/user-agent") => uesr_angent(&stream, &frame),
-        _ if frame.path.starts_with("/files/") => files_route(&stream, &frame, &config.dir),
+        _ if frame.path.starts_with("/files/") && frame.method == HttpMethod::GET => {
+            files_route(&stream, &frame, &config.dir)
+        }
 
+        _ if frame.path.starts_with("/files/") && frame.method == HttpMethod::POST => {
+            files_upload(&stream, &frame, &config.dir)
+        }
         _ => not_found_route(&stream),
     }?;
 
     Ok(())
+}
+
+fn files_upload(stream: &TcpStream, frame: &HttpRequest, dir: &Option<String>) -> Result<usize> {
+    let path = frame.path.replace("/files/", "");
+    println!("path: {}", path);
+    let file_path = format!("{}/{}", dir.as_ref().unwrap(), path);
+    let mut file = match File::create(file_path) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("Failed to create file: {}", e);
+            return not_found_route(stream);
+        }
+    };
+    match file.write_all(&frame.body.ok_or(anyhow!("No body"))?) {
+        Ok(_) => send_created(stream),
+        Err(e) => {
+            eprintln!("Failed to write to file: {}", e);
+            not_found_route(stream)
+        }
+    }
+}
+
+fn send_created(mut stream: &TcpStream) -> Result<usize> {
+    stream
+        .write(b"HTTP/1.1 201 CREATED\r\n\r\n")
+        .context("Failed to write to stream")
 }
 
 fn uesr_angent(
